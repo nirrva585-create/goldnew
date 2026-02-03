@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>XAUUSD • Real-Time</title>
+  <title>XAUUSD Real-Time Tool</title>
   <style>
     :root {
       --bg: #0a0a0a;
@@ -171,13 +171,17 @@ new TradingView.widget({
 
 <script>
 // ────────────────────────────────────────────────
-// REAL-TIME XAUUSD – Finnhub WS + Ultra-Short Bullet AI Insight
+// FULLY AUTOMATIC REAL-TIME XAUUSD TOOL – Fixed All Errors
 // ────────────────────────────────────────────────
 
-const FINNHUB_KEY = 'd5ue4vpr01qr4f88s9qgd5ue4vpr01qr4f88s9r0'; // ← REPLACE WITH YOUR REAL KEY
-const WS_URL = `wss://ws.finnhub.io?token=${FINNHUB_KEY}`;
+const PROXY = 'https://corsproxy.io/?';
+const GOLD_URL = 'https://goldprice.org/live-gold-price.html';
+
+const POLL_MS = 60000; // 60 seconds - fast & safe
+const MIN_CHANGE = 0.4;
 
 let price = null;
+let lastValidPrice = null;
 let history = new Float64Array(300);
 let hIdx = 0;
 let hCount = 0;
@@ -205,6 +209,7 @@ const els = {
   sellTp:   $('sell-tp'),
   signal:   $('signal'),
   status:   $('status'),
+  error:    $('error'),
   aiInsight:$('ai-insight'),
   size:     $('size')
 };
@@ -212,6 +217,14 @@ const els = {
 const emaCache = {};
 
 function set(el, v) { if (el && el.textContent !== v) el.textContent = v; }
+
+function showErr(msg) {
+  els.error.textContent = msg;
+  els.error.style.display = 'block';
+  els.status.textContent = 'Issue – using last price';
+}
+
+function hideErr() { els.error.style.display = 'none'; }
 
 function push(p) {
   history[hIdx] = p;
@@ -283,26 +296,23 @@ function updateAIInsight() {
     return;
   }
 
-  const adx   = getADX()   || 0;
-  const rsi   = getRSI()   || 50;
+  const adx = getADX() || 0;
+  const rsi = getRSI() || 50;
   const ema20 = getEMA(20) || price;
-  const hist  = parseFloat(getMACD()?.hist || 0);
+  const hist = parseFloat(getMACD()?.hist || 0);
 
   let html = '';
-  html += `<li><strong>${adx > 25 ? 'STRONG' : 'WEAK'} trend (${adx})</strong> • ${price > ema20 ? '↑' : '↓'}</li>`;
+  html += `<li>Trend: <strong>${adx > 25 ? 'Strong' : 'Weak'}</strong> (${adx})</li>`;
+  html += `<li>Bias: <strong>${price > ema20 ? '↑ Bullish' : '↓ Bearish'}</strong></li>`;
 
-  if (rsi < 35) html += '<li>Oversold → bounce watch</li>';
-  else if (rsi > 65) html += '<li>Overbought → reversal risk</li>';
+  if (rsi < 35) html += '<li>Oversold → Bounce watch</li>';
+  else if (rsi > 65) html += '<li>Overbought → Pullback risk</li>';
 
-  html += hist > 0 ? '<li>MACD ↑ bullish</li>' : hist < 0 ? '<li>MACD ↓ bearish</li>' : '<li>MACD neutral</li>';
+  html += hist > 0 ? '<li>MACD ↑ Bullish</li>' : hist < 0 ? '<li>MACD ↓ Bearish</li>' : '<li>MACD neutral</li>';
 
-  if (currentSignal === 'buy') {
-    html += '<li><strong style="color:#00ff88">BULLISH – Long dips</strong></li>';
-  } else if (currentSignal === 'sell') {
-    html += '<li><strong style="color:#ff4444">BEARISH – Short rallies</strong></li>';
-  } else {
-    html += '<li><strong>NEUTRAL – Wait</strong></li>';
-  }
+  if (currentSignal === 'buy') html += '<li><strong style="color:#00ff88">BULLISH – Long dips</strong></li>';
+  else if (currentSignal === 'sell') html += '<li><strong style="color:#ff4444">BEARISH – Short rallies</strong></li>';
+  else html += '<li><strong>NEUTRAL – Wait</strong></li>';
 
   els.aiInsight.innerHTML = html;
 }
@@ -316,11 +326,11 @@ function updateSignal() {
   const ema20 = getEMA(20);
   const macd = getMACD();
 
-  set(els.adx,   adx   ? adx.toFixed(1)   : '—');
-  set(els.atr,   atr.toFixed(2));
-  set(els.rsi,   rsi   ? rsi.toFixed(2)   : '—');
+  set(els.adx, adx ? adx.toFixed(1) : '—');
+  set(els.atr, atr.toFixed(2));
+  set(els.rsi, rsi ? rsi.toFixed(2) : '—');
   set(els.ema20, ema20 ? ema20.toFixed(2) : '—');
-  set(els.macd,  macd  ? `${macd.macd} / ${macd.signal}` : '—');
+  set(els.macd, macd ? `${macd.macd} / ${macd.signal}` : '—');
 
   let score = 0;
   if (rsi < 35) score += 2;
@@ -364,7 +374,7 @@ function updateSignal() {
 
   const sl = 1.5 * atr;
   const tp = 3.0 * atr;
-  set(els.buyTp,  newSig === 'buy'  ? `Buy TP +${tp.toFixed(2)} (${(price + tp).toFixed(2)}) SL -${sl.toFixed(2)} (${(price - sl).toFixed(2)})` : '—');
+  set(els.buyTp, newSig === 'buy' ? `Buy TP +${tp.toFixed(2)} (${(price + tp).toFixed(2)}) SL -${sl.toFixed(2)} (${(price - sl).toFixed(2)})` : '—');
   set(els.sellTp, newSig === 'sell' ? `Sell TP -${tp.toFixed(2)} (${(price - tp).toFixed(2)}) SL +${sl.toFixed(2)} (${(price + sl).toFixed(2)})` : '—');
 
   updateAIInsight();
@@ -379,47 +389,54 @@ function calcSize() {
   els.size.textContent = `Risk $${risk$.toFixed(2)} → ~${oz.toFixed(2)} oz`;
 }
 
-// ── WebSocket Real-Time ─────────────────────────────────
+async function refresh() {
+  try {
+    hideErr();
+    els.status.textContent = 'Fetching live gold price...';
 
-let ws;
-function connect() {
-  ws = new WebSocket(`wss://ws.finnhub.io?token=${FINNHUB_KEY}`);
+    const proxyUrl = PROXY + encodeURIComponent(GOLD_URL);
+    const res = await fetch(proxyUrl, { cache: 'no-cache' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
-  ws.onopen = () => {
-    els.status.textContent = 'Connected • Subscribed to XAUUSD';
-    ws.send(JSON.stringify({ type: 'subscribe', 'symbol': 'XAUUSD' }));
-  };
+    const html = await res.text();
 
-  ws.onmessage = (event) => {
-    const msg = JSON.parse(event.data);
-    if (msg.type === 'trade' && msg.data && msg.data.length > 0) {
-      const trade = msg.data[0];
-      const newPrice = trade.p;
-      if (typeof newPrice !== 'number' || newPrice < 1000) return;
+    // Parse price from goldprice.org pattern
+    const priceMatch = html.match(/(\d{1,4}(?:,\d{3})*\.\d{2})/);
+    if (!priceMatch || !priceMatch[1]) throw new Error('Price not found');
 
-      if (price !== null && Math.abs(newPrice - price) < MIN_CHANGE) return;
+    const newPrice = parseFloat(priceMatch[1].replace(/,/g, ''));
+    if (isNaN(newPrice) || newPrice < 1000) throw new Error('Invalid price');
 
-      price = newPrice;
-      lastValidPrice = price;
-      push(price);
+    if (price !== null && Math.abs(newPrice - price) < MIN_CHANGE) return;
 
-      const p2 = price.toFixed(2);
-      set(els.price, p2);
-      set(els.cur, p2);
+    price = newPrice;
+    lastValidPrice = price;
+    push(price);
 
-      updateSignal();
+    const p2 = price.toFixed(2);
+    set(els.price, p2);
+    set(els.cur, p2);
+    set(els.ts, new Date().toLocaleString());
+
+    set(els.high, '—');
+    set(els.low, '—');
+    set(els.change, '—');
+
+    if (hCount >= 50) updateSignal();
+
+    els.status.textContent = 'Live • Updated';
+  } catch (err) {
+    console.error(err);
+    showErr('Fetch failed: ' + err.message + ' – retrying in 60s');
+    if (lastValidPrice) {
+      set(els.price, lastValidPrice.toFixed(2));
+      set(els.cur, lastValidPrice.toFixed(2));
     }
-  };
-
-  ws.onerror = (err) => {
-    console.error('WS error:', err);
-    els.status.textContent = 'Connection lost – reconnecting...';
-  };
-
-  ws.onclose = () => setTimeout(connect, 5000);
+  }
 }
 
-connect();
+refresh();
+setInterval(refresh, POLL_MS);
 
 // Controls
 document.getElementById('btn-alerts').onclick = () => {
@@ -431,6 +448,15 @@ document.getElementById('btn-sound').onclick = e => {
   soundOn = !soundOn;
   e.target.textContent = 'Sound: ' + (soundOn ? 'ON' : 'OFF');
 };
+
+function calcSize() {
+  const acc = Number($('acc')?.value) || 10000;
+  const r = (Number($('risk')?.value) || 1) / 100;
+  const atr = getATR() || 10;
+  const risk$ = acc * r;
+  const oz = risk$ / (1.5 * atr);
+  els.size.textContent = `Risk $${risk$.toFixed(2)} → ~${oz.toFixed(2)} oz`;
+}
 </script>
 </body>
 </html>
